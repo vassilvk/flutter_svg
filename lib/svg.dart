@@ -211,6 +211,7 @@ class SvgPicture extends StatefulWidget {
     this.placeholderBuilder,
     this.semanticsLabel,
     this.excludeFromSemantics = false,
+    this.crossFadeDuration = const Duration(milliseconds: 300)
   }) : super(key: key);
 
   /// Instantiates a widget that renders an SVG picture from an [AssetBundle].
@@ -306,6 +307,7 @@ class SvgPicture extends StatefulWidget {
     BlendMode colorBlendMode = BlendMode.srcIn,
     this.semanticsLabel,
     this.excludeFromSemantics = false,
+    this.crossFadeDuration = const Duration(milliseconds: 300)
   })  : pictureProvider = ExactAssetPicture(
             allowDrawingOutsideViewBox == true
                 ? svgStringDecoderOutsideViewBox
@@ -360,6 +362,7 @@ class SvgPicture extends StatefulWidget {
     BlendMode colorBlendMode = BlendMode.srcIn,
     this.semanticsLabel,
     this.excludeFromSemantics = false,
+    this.crossFadeDuration = const Duration(milliseconds: 300)
   })  : pictureProvider = NetworkPicture(
             allowDrawingOutsideViewBox == true
                 ? svgByteDecoderOutsideViewBox
@@ -410,6 +413,7 @@ class SvgPicture extends StatefulWidget {
     BlendMode colorBlendMode = BlendMode.srcIn,
     this.semanticsLabel,
     this.excludeFromSemantics = false,
+    this.crossFadeDuration = const Duration(milliseconds: 300)
   })  : pictureProvider = FilePicture(
             allowDrawingOutsideViewBox == true
                 ? svgByteDecoderOutsideViewBox
@@ -456,6 +460,7 @@ class SvgPicture extends StatefulWidget {
     BlendMode colorBlendMode = BlendMode.srcIn,
     this.semanticsLabel,
     this.excludeFromSemantics = false,
+    this.crossFadeDuration = const Duration(milliseconds: 300)
   })  : pictureProvider = MemoryPicture(
             allowDrawingOutsideViewBox == true
                 ? svgByteDecoderOutsideViewBox
@@ -502,6 +507,7 @@ class SvgPicture extends StatefulWidget {
     BlendMode colorBlendMode = BlendMode.srcIn,
     this.semanticsLabel,
     this.excludeFromSemantics = false,
+    this.crossFadeDuration = const Duration(milliseconds: 300)
   })  : pictureProvider = StringPicture(
             allowDrawingOutsideViewBox == true
                 ? svgStringDecoderOutsideViewBox
@@ -601,6 +607,9 @@ class SvgPicture extends StatefulWidget {
   /// application.
   final bool excludeFromSemantics;
 
+  // Duration of the cross-fade animation.
+  final Duration crossFadeDuration;
+
   @override
   State<SvgPicture> createState() => _SvgPictureState();
 }
@@ -689,58 +698,73 @@ class _SvgPictureState extends State<SvgPicture> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    Widget _maybeWrapWithSemantics(Widget child) {
-      if (widget.excludeFromSemantics) {
-        return child;
-      }
-      return Semantics(
-        container: widget.semanticsLabel != null,
-        image: true,
-        label: widget.semanticsLabel == null ? '' : widget.semanticsLabel,
-        child: child,
-      );
+  Widget _maybeWrapWithSemantics(Widget child) {
+    if (widget.excludeFromSemantics) {
+      return child;
+    }
+    return Semantics(
+      container: widget.semanticsLabel != null,
+      image: true,
+      label: widget.semanticsLabel == null ? '' : widget.semanticsLabel,
+      child: child,
+    );
+  }
+
+  Widget _getSvgPictureWidget(PictureInfo picture) {
+    final Rect viewport = Offset.zero & picture.viewport.size;
+
+    double width = widget.width;
+    double height = widget.height;
+    if (width == null && height == null) {
+      width = viewport.width;
+      height = viewport.height;
+    } else if (height != null) {
+      width = height / viewport.height * viewport.width;
+    } else if (width != null) {
+      height = width / viewport.width * viewport.height;
     }
 
-    if (_picture != null) {
-      final Rect viewport = Offset.zero & _picture.viewport.size;
-
-      double width = widget.width;
-      double height = widget.height;
-      if (width == null && height == null) {
-        width = viewport.width;
-        height = viewport.height;
-      } else if (height != null) {
-        width = height / viewport.height * viewport.width;
-      } else if (width != null) {
-        height = width / viewport.width * viewport.height;
-      }
-
-      return _maybeWrapWithSemantics(
-        SizedBox(
-          width: width,
-          height: height,
-          child: FittedBox(
-            fit: widget.fit,
-            alignment: widget.alignment,
-            child: SizedBox.fromSize(
-              size: viewport.size,
-              child: RawPicture(
-                _picture,
-                matchTextDirection: widget.matchTextDirection,
-                allowDrawingOutsideViewBox: widget.allowDrawingOutsideViewBox,
-              ),
-            ),
+    return SizedBox(
+      width: width,
+      height: height,
+      child: FittedBox(
+        fit: widget.fit,
+        alignment: widget.alignment,
+        child: SizedBox.fromSize(
+          size: viewport.size,
+          child: RawPicture(
+            picture,
+            matchTextDirection: widget.matchTextDirection,
+            allowDrawingOutsideViewBox: widget.allowDrawingOutsideViewBox,
           ),
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    return _maybeWrapWithSemantics(
+  
+  @override
+  Widget build(BuildContext context) {
+
+    final firstChild = _maybeWrapWithSemantics(
       widget.placeholderBuilder == null
           ? _getDefaultPlaceholder(context, widget.width, widget.height)
           : widget.placeholderBuilder(context),
+    );
+
+    final secondChild = _maybeWrapWithSemantics(
+      _picture == null
+          ? _getDefaultPlaceholder(context, widget.width, widget.height)
+          : _getSvgPictureWidget(_picture),
+    );
+
+    return AnimatedCrossFade(
+      duration: widget.crossFadeDuration,
+      firstCurve: Curves.easeOut,
+      secondCurve: Curves.easeIn,
+      firstChild: firstChild,
+      secondChild: secondChild,
+      crossFadeState: _picture == null ? CrossFadeState.showFirst : CrossFadeState.showSecond,
     );
   }
 
